@@ -1,0 +1,37 @@
+############################################################################################################################################
+    首先对架构图中的节点角色进行说明（摘自dubbo-user-book）：
+        Provider : 暴露服务的服务提供方
+        Consumer : 调用远程服务的服务消费方
+        Registry : 服务注册与发现的注册中心
+        Monitor : 统计服务的调用次数和调用时间的监控中心
+        Container : 服务运行容器
+
+    调用关系说明：
+        1.Container负责启动、加载、运行Provider    (init)
+        2.Provider在启动时，向Registry注册自己提供的服务    (init)
+        3.Consumer在启动时，向Registry订阅自己所需的服务    (init)
+        4.Registry返回服务提供者地址列表给Consumer，如果有变更，Registry将基于长连接推送变更数据给Consumer    (async)
+        5.Consumer从服务提供者地址列表中，基于软负载均衡算法，选一台Provider进行调用，如果调用失败，再选另一台进行调用    (sync)
+        6.Consumer和Provider，在内存中累计调用次数和调用时间，定时每分钟发送一次统计数据到Monitor    (async)
+
+    架构特点：
+        连通性：
+            - Consumer和Provider只在启动时与Registry交互，注册中心不转发请求，压力小
+            - Provider向Monitor汇报的时间不包括网络开销
+            - Consumer向Monitor汇报的时间包括网络开销
+            - Registry、Consumer、Provider三者之间均为长连接，Monitor除外
+            - Registry通过长连接感知Provider的存在，Provider宕机，Registry会立刻推送事件通知Consumer
+            - Registry和Monitor全部宕机，不影响已运行的Provider和Consumer，Consumer本地缓存了Provider列表
+            - Registry和Monitor都是可选的，Consumer可以直连Provider
+        健壮性：
+            - Monitor宕机不影响使用
+            - 数据库宕机，Registry仍能通过缓存提供服务列表查询    （Registry有缓存设计）
+            - Registry对等集群，任意一台宕机，自动切换至另一台    （多个Registry构成集群）
+            - Registry全部宕机，Provider和Consumer仍能通过本地缓存通讯
+            - Provider无状态，任意一台宕机不影响使用
+            - Provider全部宕机，Consumer应用将无法使用，并无限次重连等待Provider恢复
+        伸缩性：
+            - Registry为对等集群，可动态增加机器部署实例，所有Consumer将自动发现新的Registry
+            - Provider无状态，可动态增加机器部署实例，Registry将推送新的Registry信息给Consumer
+        升级性
+############################################################################################################################################
